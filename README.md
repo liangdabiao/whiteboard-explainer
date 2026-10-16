@@ -137,7 +137,8 @@ whiteboard-explainer/
 ├─ references/
 │  ├─ pipeline.md               # 完整流水线（含踩坑记录）
 │  ├─ region-plan-guide.md      # plan.build.json 写法详解
-│  ├─ teaching-script.md        # 先稿后片：文章/教程 → 讲解视频
+│  ├─ user-gates.md             # 硬性用户确认闸：风格 / 讲稿 / TTS / 冒烟
+│  ├─ teaching-script.md        # 先稿后片：文章/教程 → 讲解视频（含确认闸）
 │  ├─ concept-short-video.md    # 概念短视频系列七步管线
 │  ├─ deep-fact-series.md       # 深度科普系列（含审计框架）
 │  ├─ book-chapter-video.md     # 书籍章节系列

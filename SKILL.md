@@ -1,16 +1,31 @@
 ---
 name: whiteboard-explainer
-version: 1.0.1
+version: 1.1.0
 display_name: 白板讲解动画
 display_name_en: Whiteboard Explainer
-description_zh: 白板讲解动画 skill：把知识讲解/科普/推导内容变成「真手绘过程」视频——白板图上的图形被一笔笔描出来、文字逐笔写出、讲到哪画到哪（帧级音画对齐）。基于 whiteboard-animator 引擎（本地 CPU 渲染、零 API 成本、确定性可重渲）。当用户要做知识讲解视频、概念科普、数学/流程推导、数据图表讲解，或要求"手绘白板动画"、"讲解画面逐笔绘制"、"讲到哪画到哪"时使用。文章/教程/文档转讲解视频时，优先走「教学讲稿流程」(references/teaching-script.md)：先写讲稿自检，再制作。触发词：白板动画、白板讲解、手绘讲解、explainer、知识科普视频、讲到哪画到哪、逐笔绘制、whiteboard、文章转视频、教程讲解。
-description_en: 'Whiteboard explainer skill that turns knowledge explainers, science popularization, and derivations into "true hand-drawn process" videos — shapes on a whiteboard are traced stroke by stroke, text is written letter by letter, and drawings follow the narration with frame-level audio-visual sync. Built on the whiteboard-animator engine (local CPU rendering, zero API cost, deterministic re-renders). Use when the user wants an educational explainer video, concept explainers, math/process derivations, or data chart walkthroughs, or asks for "whiteboard animation", "stroke-by-stroke drawing", or "draw as you talk". Trigger words: whiteboard animation, whiteboard explainer, hand-drawn explainer, explainer, article-to-video, tutorial explainer.'
-description: 白板讲解动画 skill：把知识讲解/科普/推导内容变成「真手绘过程」视频——白板图上的图形被一笔笔描出来、文字逐笔写出、讲到哪画到哪（帧级音画对齐）。基于 whiteboard-animator 引擎（本地 CPU 渲染、零 API 成本、确定性可重渲）。当用户要做知识讲解视频、概念科普、数学/流程推导、数据图表讲解，或要求"手绘白板动画"、"讲解画面逐笔绘制"、"讲到哪画到哪"时使用。**文章/教程/文档转讲解视频时,优先走「教学讲稿流程」(references/teaching-script.md)：先写讲稿自检,再制作。** 书籍章节系列(调研报告为信源)另见 references/book-chapter-video.md。** 触发词：白板动画、白板讲解、手绘讲解、explainer、知识科普视频、讲到哪画到哪、逐笔绘制、whiteboard、文章转视频、教程讲解。
+description_zh: 白板讲解动画 skill：把知识讲解/科普/推导内容变成「真手绘过程」视频——白板图上的图形被一笔笔描出来、文字逐笔写出、讲到哪画到哪（帧级音画对齐）。基于 whiteboard-animator 引擎（本地 CPU 渲染、零 API 成本、确定性可重渲）。当用户要做知识讲解视频、概念科普、数学/流程推导、数据图表讲解，或要求"手绘白板动画"、"讲解画面逐笔绘制"、"讲到哪画到哪"时使用。文章/教程/文档转讲解视频时，优先走「教学讲稿流程」(references/teaching-script.md)：先写讲稿自检，再制作。**硬性用户确认闸门**见 references/user-gates.md（讲稿风格、讲稿内容、TTS 音色未确认不得绘图/配音/渲染）。触发词：白板动画、白板讲解、手绘讲解、explainer、知识科普视频、讲到哪画到哪、逐笔绘制、whiteboard、文章转视频、教程讲解。
+description_en: 'Whiteboard explainer skill that turns knowledge explainers into true hand-drawn process videos with frame-level A/V sync. Hard user confirmation gates (script style, script content, TTS voice) are required before boards/TTS/render — see references/user-gates.md. Use for educational explainer videos, concept explainers, math/process derivations, or whiteboard animation requests.'
+description: 白板讲解动画 skill：把知识讲解/科普/推导内容变成「真手绘过程」视频——图形一笔笔描出、文字逐笔写出、讲到哪画到哪。**文章/教程优先走 teaching-script.md。硬性：未过 user-gates.md 的 G1 风格 / G2 讲稿 / G3 音色确认，不得绘图、配音、全量渲染；禁止一路干到底。** 书籍章节系列另见 references/book-chapter-video.md。触发词：白板动画、白板讲解、手绘讲解、explainer、知识科普视频、讲到哪画到哪、逐笔绘制、whiteboard、文章转视频、教程讲解。
 ---
 
 # Whiteboard Explainer（白板讲解动画）
 
 把讲解稿变成白板手绘动画：每拍一张白板图，图形按笔画绘出、文字逐笔写出，**元素级精确对齐旁白（讲到哪画到哪）**。
+
+## ★ 用户确认闸门（硬性，优先于一切制作步骤）
+
+**禁止**在未获用户明确同意时连续完成「写稿→画板→配音→渲染」。  
+完整协议、选项表、确认话术模板见 **`references/user-gates.md`**。开做前必须读。
+
+| 闸 | 确认什么 | 未通过时禁止 |
+|---|---|---|
+| G1 | **讲稿风格**（推荐一问一答；另有独白 / 苏格拉底追问） | 写完整 `讲稿.md`（可先列覆盖度清单） |
+| G2 | **讲稿内容**（`讲稿.md` + 自检 + 覆盖度；重要篇章附分章摘要） | `make_boards` / 出图 |
+| G3 | **TTS 语音**（后端探测后贴音色与语速；用户选定再写入 plan） | 任何 TTS / `build_narration*` |
+| G4 | **冒烟一拍**抽帧 | 全量 `render_explainer` |
+
+用户说「全部按推荐、不要再问」时，才可跳过对应闸，并在回复写明跳过了哪几闸。  
+一问一答的写法（角色列、`问：`/`答：`、分 region）见 `user-gates.md` 与 `teaching-script.md`。
 
 **和另外两个手绘 skill 的区别**：`story-handdrawn-remotion` 是静帧擦除（假手绘）；`story-handdrawn-video` 是 Agnes 文生视频（真动但不可控）；本 skill 是**像素级笔画绘制**——帧帧确定、本地零成本、可秒级重渲，且支持"一图逐元素生长"的单画布模式（前两者做不到）。
 
@@ -30,35 +45,31 @@ description: 白板讲解动画 skill：把知识讲解/科普/推导内容变�
 
 脚本会建 venv、装依赖（`whiteboard-animator==0.1.1` 引擎，约 83MB 的 CRAFT 模型随 pip 从 PyPI 下载，onnxruntime / edge-tts / Pillow / numpy 等传递依赖自动装上）、检查 ffmpeg 路径（缺失会报错并提示安装）。装完用 `source .venv/bin/activate`（或 `.venv\Scripts\Activate.ps1`），所有 `scripts/*.py` 都在 venv 里直接 `python scripts/xxx.py` 即可。
 
-**质量原则（70% 即交付）**：单拍画面构图对、元素对就过，不逐拍修图。渲染是本地的、零成本，重渲比修图便宜——但也遵守"skip 已存在"纪律。
+**质量原则（画面 70% 即交付）**：仅作用于**已过用户确认闸之后**的画面微调——单拍构图对、元素对就过，不逐拍修图。渲染本地零成本，重渲比修图便宜；遵守"skip 已存在"纪律。**不得**用本原则跳过 G1–G4。
 
 ## ★ 概念短视频系列（一篇文章一集，已验证量产管线）
 
 做商业/心理/经济**概念科普系列短视频**（如《5分钟商学院》一文章一集）时，走
-**`references/concept-short-video.md`** 的七步管线：`make_boards.py`（import
-`scripts/board_widgets.py` 共享组件库，画完产出 plan.build.json）→
-`scripts/build_narration_fast.py`（+22% 语速+裁静音+坏分片自清理）→ check_assignment →
-冒烟一拍抽帧 → 全量渲染 → verify_media。竖屏 720×1280，每拍 2~5 region 帧级对齐。
-该文档含 box 纪律踩坑实录与概念文六段式讲稿骨架，系列任务先读它。
+**`references/concept-short-video.md`**，并**叠加** `user-gates.md`（每集 G2→G4；系列开头确认 G0/G1/G3）。
+工程管线：`make_boards.py` → `build_narration_fast.py` → check_assignment → 冒烟 → 全量 → verify_media。
+竖屏 720×1280。系列任务先读 concept 文档与 user-gates。
 
 ## ★ 深度内容科普系列（经典书+最新深调研，硬性标准流程）
 
-做"经典书/学科框架 + 最新动态深调研"的深度科普系列（如《未来总统的物理课》）时，
-**必须**走 **`references/deep-fact-series.md`**：每集制作前 2–6 次真实搜索、
-信源表进讲稿、前沿内容占正片主体（1/3–1/2 拍数）；绘图用
-**`lib/audit_boards.py`** 防重叠审计框架——所有文字走 mtext/li、图形 icon() 登记、
-场景收尾 audit() 两两查重，重叠直接构建失败（用户硬性要求：list 文字与图标绝不重叠）。
-交付定义 = 审计全绿 + 双轮归属 0 未归属 + verify PASS + 抽帧目检通过。
+做"经典书/学科框架 + 最新动态深调研"的深度科普系列时，
+**必须**走 **`references/deep-fact-series.md`**，并**叠加** `user-gates.md`。
+每集制作前 2–6 次真实搜索；`lib/audit_boards.py` 防重叠；
+交付定义 = 用户闸通过 + 审计全绿 + 双轮归属 0 + verify PASS + 抽帧目检通过。
 
 ## ★ 文章/教程 → 讲解视频:教学讲稿流程(此类任务优先走这条)
 
-输入是文章/教程/文档时,**先稿后片**:`讲稿.md`(逐拍表格:拍号|画面|旁白逐字稿)是第一交付物,自检通过才动笔画图。完整方法见 **`references/teaching-script.md`**,要点:
+输入是文章/教程/文档时,**先确认后制作**。完整方法见 **`references/teaching-script.md`** + **`references/user-gates.md`**。要点:
 
-1. **问题驱动**:开场实验/悬念提问;每个概念由一个新问题引出(白板画 Q 气泡,先问再答);结尾回扣开头。禁止"名词+定义"照书念。
-2. **原文覆盖度清单**:逐项盘点原文知识点并打勾,不许漏;原文图片全部下载阅读——照片/接线图/截图直接合成上屏,示意图按原文忠实重绘。
-3. **举例 ≠ 比喻**:高中生及以上受众,例子用真材料(数值计算、编码实例、失配实验、原理与局限);每讲 ≥1 个"为什么这样设计"的启发点。
-4. **语速与节奏**:wrapper monkey-patch `build_narration.tts` 注入 rate(+15%~+25%)并裁剪分片首尾静音(wrapper 模板见 reference);gap 0.2;单拍旁白 ≤50 字。
-5. **渲染前质检**:`python scripts/check_assignment.py plan.json`——所有底图组件必须归属到 region,否则会出现"讲到 A 时 B 提前画出来"。退出码非 0 时先修 box 再渲染。
+1. **G1 风格**：推荐一问一答；用户选定后再写稿。禁止默认独白一路写完。
+2. **G2 讲稿**：`讲稿.md` 自检通过后停，用户确认才画板。重要篇章附分章摘要。
+3. **问题驱动 + 覆盖度**：开场/概念前有问；原文知识点与图片不漏；例子用真材料；≥1 启发点。
+4. **G3 音色**：探测 TTS 后端后贴选项；用户选定 voice/rate 再配音。单拍旁白 ≤50 字。
+5. **G4 + 质检**：`check_assignment` 清零 → 冒烟抽帧经用户同意 → 全量渲染。
 
 ## 成片模式（两种）
 
@@ -120,11 +131,13 @@ python ../ffmpeg-skill/scripts/_contract.py doctor --json
 | 视频里出现"方框"字形 | ✗✓ 等 emoji/符号字体缺字 | 用 × √ · 等常规字符 |
 | TTS 把 `claw_core` 读成"claw 下划线 core" | edge-tts 对 zh 音色把 `_` 读作"下划线" | 编程标识符的 `_` 一律不读：TTS 前把文本 `_` 替换成空格（参考 esp-claw-course/build_narration_course.py 的 clean() 写法，包一层 tts monkey-patch）。**用户硬性要求（2026-09-17）：涉及代码/技术内容的讲稿，所有旁白 TTS 都要走这个清洗**；已渲染的旧集不必返工 |
 
-## 新一集工作流（7 步）
+## 新一集工作流（先过闸，再制作）
+
+开做前读 **`references/user-gates.md`**。顺序：G1 风格 → 写稿 → G2 讲稿确认 → 画板 → G3 音色 → TTS → 归属质检 → G4 冒烟 → 全量。
 
 ### 1. 写讲稿 + 拆 region（plan.build.json）
 
-**文章/教程类内容:先按 `references/teaching-script.md` 写 `讲稿.md`(逐拍表格)并做覆盖度自检,通过后再拆 region。**
+**文章/教程类内容:先按 `references/teaching-script.md` + `user-gates.md` 走完 G1/G2,用户确认讲稿后,再拆 region / 画板。**
 
 每拍 = 一张白板图 + 若干 region（一个 region = 图上一块绘制区域 + 一句 annotation）。**讲稿按 region 子句拆分，每个子句单独 TTS**——分片时长即精确 cue。
 
