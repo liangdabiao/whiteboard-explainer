@@ -29,6 +29,8 @@ import json
 import sys
 from pathlib import Path
 
+from user_gates import require
+
 from PIL import Image, ImageDraw, ImageFont
 
 # skill 自带字体目录（毛笔体等差异化字体必须内置）
@@ -164,8 +166,11 @@ def main() -> int:
     ap.add_argument("--title", help="快捷：顶部标题")
     ap.add_argument("--title-size", type=int, default=64, help="标题字号（默认 64）")
     ap.add_argument("--title-y", type=int, default=40, help="标题 y（默认 40）")
+    ap.add_argument("--project-root", type=Path, default=Path.cwd(),
+                    help="审批所在的集目录（默认当前目录）")
     args = ap.parse_args()
 
+    require(args.project_root, "G2")
     if args.base.startswith("blank:"):
         w, h = (int(v) for v in args.base.split(":", 1)[1].lower().split("x"))
         image = Image.new("RGB", (w, h), "white")

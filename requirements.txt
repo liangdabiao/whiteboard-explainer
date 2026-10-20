@@ -10,3 +10,6 @@ whiteboard-animator==0.1.1
 
 # TTS 旁白（edge-tts，免账号，免费）
 edge-tts>=6.1.9
+
+# gen_tts.py 的 narration.yaml / preview.yaml 输入
+PyYAML>=6.0

@@ -24,11 +24,21 @@ import os
 import re
 import subprocess
 import sys
-import time
+import tempfile
 from pathlib import Path
 
+from artifacts import atomic_bytes, atomic_json, file_digest, file_lock
+from boards import board_canvas, board_image
+from check_assignment import audit
+from media import concat_manifest
+from render_contract import QUALITY, RenderReceipt, frame_duration, render_config, scene_key, snapshot, verify_video
+from user_gates import GateError, require, require_render, require_teaching, require_narration
+
 import numpy as np
-from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import theme  # noqa: E402
+from themed_render import tint_video  # noqa: E402
 
 try:
     from whiteboard_animator import WhiteboardAnimator
@@ -40,12 +50,6 @@ except ImportError:  # pragma: no cover
         "或在已激活 venv 里安装：\n"
         "  pip install 'whiteboard-animator==0.1.1'\n"
     )
-
-QUALITY = {
-    "low": {"fps": 20, "bitrate": "500k"},
-    "medium": {"fps": 24, "bitrate": "1500k"},
-    "high": {"fps": 24, "bitrate": "3000k"},
-}
 
 # 绘制预算：占音频总时长的比例，剩下的时间保留已完成画面（呼吸/收尾）
 DRAW_BUDGET = 0.75
@@ -76,10 +80,8 @@ def probe_duration(path: Path) -> float:
     except (FileNotFoundError, subprocess.CalledProcessError):
         pass
     # 兜底：用 ffmpeg 读 stderr 里的 Duration
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-    import theme as _t
-    _t.setup_ffmpeg_env()
-    ff = _t.ffmpeg_path()
+    theme.setup_ffmpeg_env()
+    ff = theme.ffmpeg_path()
     if not ff:
         raise FileNotFoundError("需要 ffprobe 或 ffmpeg 才能读时长，两者都没找到")
     r = subprocess.run([ff, "-i", str(path)], capture_output=True, encoding="utf-8",
@@ -157,7 +159,7 @@ def build_windows(regions: list[dict], total: float) -> list[dict]:
     """
     cued = [r for r in regions if r.get("start") is not None and r.get("end") is not None]
     if cued:
-        windows = []
+        windows: list[dict] = []
         for r in sorted(cued, key=lambda x: float(x["start"])):
             windows.append({
                 "boxes": region_boxes(r),
@@ -220,7 +222,46 @@ def widen(windows: list[dict], factor: float, total: float) -> list[dict]:
 # --------------------------------------------------------------------------
 
 def render_scene(scene: dict, root: Path, out_dir: Path, quality: str,
-                 animator: WhiteboardAnimator | None, force: bool) -> tuple[Path, float]:
+                 animator: WhiteboardAnimator | None, force: bool,
+                 config: dict | None = None, facts: dict | None = None) -> tuple[Path, float]:
+    config = config or render_config(quality, "whiteboard", canvas=board_canvas(root / scene["image"]))
+    requested = (probe_duration(root / scene["audio"]) if scene.get("audio")
+                 else float(scene.get("duration", 8)))
+    if scene.get("duration_override") is not None:
+        requested = float(scene["duration_override"])
+    expected = frame_duration(requested, config["fps"], scene)
+    key = scene_key(scene, root, config)
+    target = out_dir / f"{scene['id']}-{key}.mp4"
+    metadata = target.with_suffix(".mp4.json")
+    if not force:
+        try:
+            proof = json.loads(metadata.read_text(encoding="utf-8"))
+            if proof["key"] == key and proof["sha256"] == file_digest(target):
+                result = verify_video(target, config, bool(scene.get("audio")))
+                if abs(result["duration"] - expected) > 2 / config["fps"] + 0.05:
+                    raise ValueError("Cached scene duration differs from the current input")
+                if facts is not None:
+                    facts.update({"generated": 0, "reused": 1})
+                return target, result["duration"]
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="render-", dir=out_dir) as td:
+        result_path, _ = _render_uncached(scene, root, Path(td), config, animator)
+        if scene_key(scene, root, config) != key:
+            raise ValueError("Scene input changed during rendering; cache was not published")
+        result = verify_video(result_path, config, bool(scene.get("audio")))
+        if abs(result["duration"] - expected) > 2 / config["fps"] + 0.05:
+            raise ValueError("Rendered scene duration differs from the current input")
+        atomic_bytes(target, result_path.read_bytes())
+        atomic_json(metadata, {"key": key, "sha256": file_digest(target)})
+    if facts is not None:
+        facts.update({"generated": 1, "reused": 0})
+    return target, result["duration"]
+
+
+def _render_uncached(scene: dict, root: Path, out_dir: Path, config: dict,
+                     animator: WhiteboardAnimator | None) -> tuple[Path, float]:
     sid = scene["id"]
     scene_out = out_dir / f"{sid}.mp4"
 
@@ -240,21 +281,16 @@ def render_scene(scene: dict, root: Path, out_dir: Path, quality: str,
         total = float(scene.get("duration") or 8.0)
     if scene.get("duration_override"):
         total = float(scene["duration_override"])
+    fps, bitrate = config["fps"], config["bitrate"]
+    total = frame_duration(total, fps, scene)
 
-    if scene_out.exists() and not force:
-        log(f"  [{sid}] 已存在，跳过（--force 可重渲）")
-        return scene_out, total
-
-    with Image.open(image_path) as im:
-        rgba = im.convert("RGBA")
-        bg = Image.new("RGBA", rgba.size, "white")
-        img = np.array(Image.alpha_composite(bg, rgba).convert("RGB"))
-
-    settings = QUALITY.get(quality, QUALITY["medium"])
-    fps, bitrate = settings["fps"], settings["bitrate"]
+    img = np.array(board_image(image_path, config["canvas"]))
 
     regions = scene.get("regions") or []
-    element_plan = build_windows(regions, total) if regions else None
+    active = total
+    if scene.get("hold", 0) or scene.get("tail_pad", 0):
+        active = min(total, math.ceil(float(scene["narration_duration"]) * fps - 1e-9) / fps)
+    element_plan = build_windows(regions, active) if regions else None
     need_plan = element_plan is not None
     animator = animator or WhiteboardAnimator(fade_duration=0.06 if need_plan else 0.12)
     if (animator.fade_duration == 0.12) == need_plan:
@@ -265,33 +301,47 @@ def render_scene(scene: dict, root: Path, out_dir: Path, quality: str,
     for attempt in range(4):
         try:
             animator.render_to_file(
-                img, total * DRAW_BUDGET, total, str(video_only),
+                img, active * DRAW_BUDGET, active, str(video_only),
                 fps=fps, bitrate=bitrate,
-                element_plan=(element_plan if attempt == 0 else widen(element_plan, 1 + 0.15 * attempt, total)),
+                element_plan=(element_plan if attempt == 0 or not element_plan
+                              else widen(element_plan, 1 + 0.15 * attempt, active)),
             )
             last_error = None
             break
         except RuntimeError as exc:
+            if any(r.get("start") is not None for r in regions):
+                raise RuntimeError("Exact cue rendering failed; adjust the scene instead of widening cues") from exc
             last_error = exc
             log(f"  [{sid}] 窗口过窄（{exc}），自动放宽 {int(15 * (attempt + 1))}% 重试")
     if last_error:
         raise last_error
+    if total > active + 1e-6:
+        last_frame = out_dir / "last.png"
+        run(["ffmpeg", "-v", "error", "-nostdin", "-i", str(video_only),
+             "-ss", str(max(0, active - 1 / fps - 1e-6)), "-frames:v", "1", str(last_frame)])
+        hold_video = out_dir / "hold.mp4"
+        run(["ffmpeg", "-v", "error", "-nostdin", "-loop", "1", "-i", str(last_frame),
+             "-r", str(fps), "-frames:v", str(round((total - active) * fps)),
+             "-c:v", "libx264", "-b:v", bitrate, "-pix_fmt", "yuv420p", str(hold_video)])
+        held = out_dir / "held.mp4"
+        concatenate([video_only, hold_video], held)
+        held.replace(video_only)
 
     if audio_path is None:
         video_only.replace(scene_out)
     else:
         run(["ffmpeg", "-y", "-i", str(video_only), "-i", str(audio_path),
-             "-c:v", "copy", "-c:a", "aac", "-shortest", str(scene_out)])
+             "-c:v", "copy", "-c:a", "aac", "-ar", "24000", "-ac", "1",
+             "-af", "apad", "-t", str(total), str(scene_out)])
     try:
         video_only.unlink()
     except OSError:
         pass
 
     # 换主题时，成片后再整体染色（引擎只认纯白，底色进不了帧缓冲）
-    if globals().get("_THEME_NAME") and globals()["_THEME_NAME"] != "whiteboard":
-        from themed_render import tint_video
-        tint_video(str(scene_out), globals()["_THEME_NAME"])
-        log(f"  [{sid}] 已按主题 {_THEME_NAME} 染色底色")
+    if config["theme"] != "whiteboard":
+        tint_video(str(scene_out), config["theme"])
+        log(f"  [{sid}] 已按主题 {config['theme']} 染色底色")
 
     total = probe_duration(scene_out)
     return scene_out, total
@@ -302,12 +352,8 @@ def concatenate(parts: list[Path], output: Path) -> None:
         if parts[0].resolve() != output.resolve():
             run(["ffmpeg", "-y", "-i", str(parts[0]), "-c", "copy", str(output)])
         return
-    concat_list = output.parent / (output.name + ".concat.txt")
+    concat_list = concat_manifest(parts, output)
     try:
-        concat_list.write_text(
-            "".join(f"file '{p.resolve().as_posix()}'\n" for p in parts),
-            encoding="utf-8",
-        )
         run(["ffmpeg", "-y", "-f", "concat", "-safe", "0",
              "-i", str(concat_list), "-c", "copy", str(output)])
     finally:
@@ -315,101 +361,94 @@ def concatenate(parts: list[Path], output: Path) -> None:
             concat_list.unlink()
 
 
+def produce(args, receipt: RenderReceipt) -> dict:
+    plan_path = Path(args.plan).resolve()
+    root = plan_path.parent
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    if not args.dry_run:
+        require(root, "G3" if args.only else "G4")
+        require_teaching(root, plan)
+    name = args.theme or os.environ.get("WHITEBOARD_THEME") or "whiteboard"
+    theme.get(name)
+    theme.setup_ffmpeg_env()
+    theme.patch_no_tpad()
+    canvas = plan.get("canvas")
+    if canvas is None:
+        if not plan.get("scenes"):
+            raise ValueError("The render plan requires scenes")
+        canvas = board_canvas(root / plan["scenes"][0]["image"])
+    config = render_config(args.quality, name,
+                           args.fps if args.fps is not None else plan.get("fps"), canvas)
+    with receipt.check("inputs") as detail:
+        context = snapshot(plan_path, plan, config)
+        if not args.dry_run:
+            require_narration(root, context)
+        detail["method"] = "snapshot: 输入结构校验 + 素材/配置/实现指纹"
+        detail["evidence"] = f"key={context['key']}, scenes={len(context['scenes'])}"
+    receipt.bind(context)
+    if args.dry_run:
+        return {"status": "PASS", "stage": "PREFLIGHT", "context": context,
+                "checks": receipt.checks, "check_evidence": receipt.check_evidence}
+    if not args.only:
+        require_render(root, context["key"])
+    with receipt.check("assignment"):
+        assignment = audit(plan, root, config["canvas"])
+    receipt.assignment(assignment)
+    scenes = [s for s in plan["scenes"] if not args.only or s["id"] == args.only]
+    if not scenes:
+        raise ValueError("--only does not match a scene")
+    output = Path(args.out)
+    output = output if output.is_absolute() else root / output
+    if output.suffix.lower() != ".mp4":
+        raise ValueError("Render output must use the .mp4 extension")
+    with file_lock(output.parent / f".{output.name}.lock", "render"):
+        if not args.only and output.exists() and not args.force:
+            raise ValueError("Output already exists; choose another output or explicitly use --force")
+        with receipt.run(root, only=args.only) as workspace:
+            with receipt.check("render") as detail:
+                parts = []
+                for scene in scenes:
+                    facts: dict = {}
+                    part, _ = render_scene(scene, root, root / ".video-cache", args.quality,
+                                           None, args.force, config, facts)
+                    receipt.cache(facts)
+                    parts.append(part)
+                movie = workspace / "video.mp4"
+                concatenate(parts, movie)
+                detail["method"] = "whiteboard_animator 逐拍渲染 + ffmpeg concat"
+                detail["evidence"] = f"scenes={len(parts)}"
+            result = receipt.video(movie)
+            frames = []
+            if args.only:
+                for index, fraction in enumerate((0.25, 0.8)):
+                    frame = workspace / f"frame-{index}.png"
+                    run(["ffmpeg", "-v", "error", "-nostdin", "-ss", str(result["duration"] * fraction),
+                         "-i", str(movie), "-frames:v", "1", str(frame)])
+                    frames.append(frame)
+            return receipt.complete(frames=frames, output=None if args.only else output)
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="白板讲解动画渲染器")
     ap.add_argument("plan", help="plan.json 路径")
     ap.add_argument("--out", required=True, help="成片输出路径（.mp4）")
     ap.add_argument("--quality", choices=list(QUALITY), default="medium")
+    ap.add_argument("--fps", type=int, help="覆盖帧率，须与 G4 样片一致")
     ap.add_argument("--only", help="只渲这一拍（如 s01），不 concat")
-    ap.add_argument("--force", action="store_true", help="忽略已存在的分拍 mp4，强制重渲")
+    ap.add_argument("--force", action="store_true", help="强制重渲并允许替换当前输出；历史运行副本保留")
     ap.add_argument("--dry-run", action="store_true", help="只打印计划，不渲染")
     ap.add_argument("--theme", help="配色主题（whiteboard/warm/cool/mint/sakura）；"
                                    "非默认主题会走 lib/themed_render.py 成片后整体染色")
     args = ap.parse_args()
 
-    plan_path = Path(args.plan).resolve()
-    root = plan_path.parent
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
-    scenes = plan["scenes"]
-
-    # 主题：默认主题走原路径（零成本）；换主题则成片后整体染色
-    theme_name = args.theme or os.environ.get("WHITEBOARD_THEME") or "whiteboard"
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-    import theme as _theme_mod
-    _theme_mod.setup_ffmpeg_env()
-    # 老版 ffmpeg 缺 tpad 滤镜 → 禁用引擎的延帧路径（整段当绘制期）
-    _theme_mod.patch_no_tpad()
-    themed = theme_name != _theme_mod.DEFAULT_THEME
-    globals()["_THEME_NAME"] = theme_name
-    if args.theme:
-        log(f"配色主题：{theme_name}（{_theme_mod.get(theme_name)['paper']}）"
-            + ("｜成片后整体染色" if themed else "｜默认路径"))
-
-    if args.only:
-        scenes = [s for s in scenes if s["id"] == args.only]
-        if not scenes:
-            sys.exit(f"--only {args.only} 没有匹配到任何拍")
-
-    log(f"方案：{plan.get('idea', plan_path.name)}  共 {len(scenes)} 拍")
-    for s in scenes:
-        regions = s.get("regions") or []
-        has_cue = any(r.get("start") is not None and r.get("end") is not None for r in regions)
-        mode = "精确cue" if has_cue else ("估算窗口" if regions else "均分")
-        log(f"  {s['id']}: {s['image']}"
-            + (f" + {s['audio']}" if s.get("audio") else f" ({s.get('duration', 8)}s 静音)")
-            + f"  [{len(regions)} region / {mode}]")
-
-    if args.dry_run:
-        return 0
-
-    out_path = Path(args.out)
-    if not out_path.is_absolute():
-        out_path = root / out_path
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_dir = out_path.parent / (out_path.stem + "_parts")
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    has_audio = [bool(s.get("audio")) for s in scenes]
-    if len(set(has_audio)) > 1:
-        sys.exit("所有拍必须统一：要么全有音频，要么全静音（ffmpeg concat 要求流一致）")
-
-    t0 = time.monotonic()
-    parts, durations = [], []
-    for scene in scenes:
-        log(f"渲染 {scene['id']} ...")
-        part, dur = render_scene(scene, root, out_dir, args.quality, None, args.force)
-        parts.append(part)
-        durations.append(dur)
-        log(f"  -> {part.name} ({dur:.2f}s)")
-
-    if args.only:
-        log(f"单拍完成：{parts[0]}（跳过 concat）")
-        return 0
-
-    log(f"合并 {len(parts)} 段 -> {out_path}")
-    concatenate(parts, out_path)
-
-    # 产物校验：合并后必须可解码且时长≈分拍合计，否则删坏文件并定位异常分拍
+    receipt = RenderReceipt()
     try:
-        total_video = probe_duration(out_path)
-        if abs(total_video - sum(durations)) > 1.0 + 0.01 * len(parts):
-            raise ValueError(f"成片时长 {total_video:.1f}s ≠ 分拍合计 {sum(durations):.1f}s")
-    except Exception as exc:
-        log(f"  [ERROR] 合并产物校验失败：{exc}")
-        bad = []
-        for p in parts:
-            try:
-                if probe_duration(p) <= 0.2:
-                    bad.append(f"{p} (时长异常)")
-            except Exception:
-                bad.append(f"{p} (无法解码)")
-        if out_path.exists():
-            out_path.unlink()                      # 不留无效成片
-        log(f"  [ERROR] 异常分拍：{bad or '无（可能是磁盘空间不足）'}")
-        raise SystemExit("合并产物无效，已删除。排查异常分拍后重跑（分拍会缓存）。")
-
-    log(f"成片：{out_path}")
-    log(f"  分拍时长合计 {sum(durations):.1f}s / 成片 {total_video:.1f}s / 耗时 {time.monotonic() - t0:.0f}s")
+        report = produce(args, receipt)
+    except (Exception, GateError) as exc:
+        report = receipt.failure(exc, blocked=isinstance(exc, GateError))
+        print(str(exc), file=sys.stderr)
+        log("REPORT " + json.dumps(report, ensure_ascii=True))
+        return 1
+    log("REPORT " + json.dumps(report, ensure_ascii=True))
     return 0
 
 

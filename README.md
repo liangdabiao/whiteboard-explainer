@@ -95,6 +95,13 @@ python lib/tools/demo_themes.py      # 一张图看全部主题
 体检会拦住一个容易踩的坑：**辅助文字色（`muted`）若与底色同色相且偏浅，小字会被二值化切碎**
 （实测 `#8496A8` 配 `#EAF1FB` 让 30px 中文碎成 98 块）。所以 `muted` 一律灰度 ≲125 且色相与底色拉开。
 
+## 制作流程与开发验证
+
+- 用户确认与阶段拦截：[user-gates.md](references/user-gates.md)。
+- 配音有效配置、内容缓存与运行清单：[narration-workflow.md](references/narration-workflow.md)。
+- 视频缓存、G4/G5 类型化回执、教学设计与思考停顿：[render-workflow.md](references/render-workflow.md)。
+- 开发测试只证明对应夹具与检查范围，不代替真实配音、白板绘制质量或用户完整观看确认。
+
 ## 文件结构
 
 ```
@@ -137,7 +144,8 @@ whiteboard-explainer/
 ├─ references/
 │  ├─ pipeline.md               # 完整流水线（含踩坑记录）
 │  ├─ region-plan-guide.md      # plan.build.json 写法详解
-│  ├─ teaching-script.md        # 先稿后片：文章/教程 → 讲解视频
+│  ├─ user-gates.md             # 硬性用户确认闸：风格 / 讲稿 / TTS / 冒烟
+│  ├─ teaching-script.md        # 先稿后片：文章/教程 → 讲解视频（含确认闸）
 │  ├─ concept-short-video.md    # 概念短视频系列七步管线
 │  ├─ deep-fact-series.md       # 深度科普系列（含审计框架）
 │  ├─ book-chapter-video.md     # 书籍章节系列
@@ -157,7 +165,7 @@ whiteboard-explainer/
 | `onnxruntime` | pip 包 | ✅ | PyPI |
 | `edge-tts` | pip 包 | 可选 | PyPI；**本机已被微软 403 封锁，请改用 apiz**（见下） |
 | `Pillow` / `numpy` | pip 包 | ✅ | PyPI |
-| `ffmpeg` | 系统二进制 | ✅ | 需支持 **libx264**；`ffprobe` 可选（缺了会退回 ffmpeg 解析时长） |
+| `ffmpeg` / `ffprobe` | 系统二进制 | ✅ | 内置配音与校验需要两者；ffmpeg 须支持 **libx264** |
 | `AGNES_API_KEY` | Agnes API 凭证 | 可选 | `.env` 或环境变量 |
 
 `.env` 寻找顺序：cwd → 父目录 → `~/.env` → `~/.workbuddy/.env`，找不到则硬报错（不会静默失败）。
@@ -166,10 +174,10 @@ whiteboard-explainer/
 
 ### 旁白：edge-tts 被封时的替代方案（apiz）
 
-**先自检 edge-tts 是否还可用**——它经常被微软按 IP/地区封锁：
+**先获准再测试 edge-tts 是否可用**。G2 后准备单句 `preview.json`，按 G3 单独授权试听：
 
 ```bash
-python scripts/gen_tts.py "测试一句" --out /tmp/probe.mp3
+python scripts/gen_tts.py preview.json --preview --out-dir preview_audio
 # 报 WSServerHandshakeError 403 → 已被封锁，走下面的 apiz 方案
 ```
 

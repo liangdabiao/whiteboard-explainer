@@ -3,6 +3,8 @@
 > 从《5分钟商学院》EP1《人人都应该是自己的CEO》全流程验证（2026-09-13）。
 > 适用：商业/心理/经济概念科普系列短视频，一篇文章一集，竖屏 720×1280。
 > 本文档是「教学讲稿流程 (teaching-script.md)」在**系列化量产**场景的落地版，两者原则一致。
+>
+> **硬性叠加**：[`user-gates.md`](user-gates.md)。系列开头确认 G0/G1/G3；**每一集**在画板前过 G2，全量渲染前过 G4。未确认不得制作。
 
 ## 成片规格（已验证基线）
 
@@ -18,17 +20,19 @@ PY="C:/Users/49707/.workbuddy/binaries/python/envs/whiteboard/Scripts/python.exe
 SKILL="D:/story-skill/.workbuddy/skills/whiteboard-explainer/scripts"
 cd workspace/<project>
 
-# 1) 读原文 → 写 讲稿.md（逐拍表格 + 覆盖度自检，见 teaching-script.md）
+# 0) 系列开头：user-gates G0/G1/G3（风格+音色；用户确认前不要往下跑）
+# 1) 读原文 → 写 讲稿.md（按 G1 风格；覆盖度自检，见 teaching-script.md）
+#    → G2：停，等用户确认讲稿
 # 2) 写 make_boards.py（import board_widgets，画完直接产出 plan.build.json）
 $PY make_boards.py
 
-# 3) TTS + 精确 cue（+22%，自动删 0 字节坏分片、断点续跑）
+# 3) TTS + 精确 cue（voice/rate 用 G3 用户选择；自动删坏分片）
 $PY $SKILL/build_narration_fast.py plan.build.json
 
 # 4) 归属质检（必须 0 未归属）
 $PY $SKILL/check_assignment.py plan.json
 
-# 5) 冒烟渲染一拍 + 抽帧验 cue，通过后全量渲染
+# 5) 冒烟一拍 + 抽帧 → G4：停，等用户说可以全量
 $PY $SKILL/render_explainer.py plan.json --out out/<name>.mp4 --only s01
 ffmpeg -i out/<name>_parts/s01.mp4 -vf "select=eq(n\,20)" -vframes 1 check/f20.png
 $PY $SKILL/render_explainer.py plan.json --out out/<name>.mp4

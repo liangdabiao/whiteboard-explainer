@@ -27,6 +27,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from user_gates import require
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from lib_agnes import generate_image  # noqa: E402
 
@@ -122,13 +124,14 @@ def main() -> int:
         if not scenes:
             sys.exit(f"--only {args.only} 无匹配")
 
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
     if args.dry_run:
         for s in scenes:
             print(f"=== {s['id']} ===\n{build_prompt(s['visual'])}\n")
         return 0
+
+    require(Path(args.boards).resolve().parent, "G2")
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"生成 {len(scenes)} 张白板图 -> {out_dir} ({args.width}x{args.height}, {args.ratio})")
     t0 = time.monotonic()

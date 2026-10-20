@@ -9,9 +9,13 @@
 
 403 是**长期按 IP/地区封锁**，不是偶发抖动，重试没有意义：
 
+G2 后准备单句 `preview.json`，按 G3 单独获准再试听：
+
 ```bash
-python scripts/gen_tts.py "测试一句" --out /tmp/probe.mp3
+python scripts/gen_tts.py preview.json --preview --out-dir preview_audio
 ```
+
+若改用付费 apiz，先说明费用并重新确认后端与音色，不自动切换或产生调用。
 
 报错长这样：
 

@@ -15,9 +15,8 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
-
 from whiteboard_animator import WhiteboardAnimator
+from boards import board_image
 
 
 def region_boxes(region, sw, sh):
@@ -34,14 +33,15 @@ def region_boxes(region, sw, sh):
     return out
 
 
-def main() -> int:
-    plan_path = Path(sys.argv[1] if len(sys.argv) > 1 else "plan.json").resolve()
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
-    root = plan_path.parent
+def audit(plan: dict, root: Path, canvas: list[int] | None = None) -> dict:
     an = WhiteboardAnimator(fade_duration=0.06)
-    bad = 0
+    failures = []
+    checked = False
     for scene in plan["scenes"]:
-        img = np.array(Image.open(root / scene["image"]).convert("RGB"))
+        if not scene.get("regions"):
+            continue
+        checked = True
+        img = np.array(board_image(root / scene["image"], canvas))
         small = an._enforce_white_bg(an._downscale(img))
         comps = an._find_components(small)
         sw, sh = small.shape[1], small.shape[0]
@@ -63,10 +63,21 @@ def main() -> int:
                     owned = True
                     break
             if not owned:
-                print(f"{scene['id']} UNASSIGNED comp{i} bbox=({x0},{y0})-({x1},{y1})")
-                bad += 1
-    print(f"TOTAL unassigned: {bad}")
-    return 1 if bad else 0
+                failures.append({"scene": scene["id"], "component": i,
+                                 "box": [int(x0), int(y0), int(x1), int(y1)]})
+    return {"state": "FAIL" if failures else ("PASS" if checked else "SKIP"),
+            "unassigned": failures}
+
+
+def main() -> int:
+    plan_path = Path(sys.argv[1] if len(sys.argv) > 1 else "plan.json").resolve()
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    result = audit(plan, plan_path.parent, plan.get("canvas"))
+    for failure in result["unassigned"]:
+        print(f"{failure['scene']} UNASSIGNED comp{failure['component']} bbox={failure['box']}")
+    print(f"ASSIGNMENT {result['state']}")
+    print(f"TOTAL unassigned: {len(result['unassigned'])}")
+    return 1 if result["state"] == "FAIL" else 0
 
 
 if __name__ == "__main__":
