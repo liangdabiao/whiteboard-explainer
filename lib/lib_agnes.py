@@ -219,8 +219,8 @@ def generate_image(
 
 
 if __name__ == "__main__":
-    # 自检：列 key 前 8 位 + 测试一次小请求
+    # 自检：只确认 key 已设置，不打印它的任何片段
     key = _resolve_api_key()
-    print(f"AGNES_API_KEY: {key[:8]}...{key[-4:]}")
+    print(f"AGNES_API_KEY: set (length {len(key)})")
     print(f"BASE_URL: {_resolve_base_url()}")
     print("OK（未发测试请求，节省配额）")
